@@ -27,13 +27,18 @@ class InformeAuditoria(models.Model):
 
     def __str__(self):
         return f"Informe de Auditoría - {self.fecha}"
-
-# Modelo para el área de seguridad
-class AreaSeguridad(models.Model):
+    
+class Estado(models.Model):
     descripcion = models.CharField(max_length=200)
     color = models.CharField(max_length=50)
     icono = models.CharField(max_length=50)
 
+    def __str__(self):
+        return f"Estado - {self.descripcion}"
+    
+# Modelo para el área de seguridad
+class AreaSeguridad(models.Model):
+    descripcion = models.CharField(max_length=200)
     def __str__(self):
         return self.descripcion
 
