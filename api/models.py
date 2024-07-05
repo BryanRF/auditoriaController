@@ -48,7 +48,7 @@ class SeccionAuditoria(models.Model):
     area_seguridad = models.ForeignKey(AreaSeguridad, on_delete=models.CASCADE)
     codigo_referencia = models.CharField(max_length=20)
     descripcion_control = models.TextField()
-    estado = models.CharField(max_length=20)
+    estado = models.ForeignKey(Estado, on_delete=models.CASCADE)
     evidencia = models.FileField(upload_to='media/')
     observaciones = models.TextField()
     recomendaciones = models.TextField()
