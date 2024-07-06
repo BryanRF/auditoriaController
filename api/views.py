@@ -8,7 +8,87 @@ from .models import SeccionAuditoria, InformeAuditoria
 from reportlab.lib.units import inch
 from reportlab.lib.colors import HexColor
 from django.views import View
+import openpyxl
+from collections import Counter
+from django.http import HttpResponse
+from django.views import View
+from .models import SeccionAuditoria
+from io import BytesIO
 
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Side
+from io import BytesIO
+from .models import SeccionAuditoria
+
+class ExportarAuditoriaExcel(View):
+    def get(self, request, *args, **kwargs):
+        # Crear un nuevo libro de Excel
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Auditoría General"
+
+        # Establecer los encabezados de la tabla
+        encabezados = ['Código', 'Área de Seguridad', 'Descripción del Control', 'Estado', 'Pregunta', 'Respuesta', 'Observaciones', 'Recomendaciones']
+        ws.append(encabezados)
+
+        # Ajustar el tamaño de las columnas y centrar el texto
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter  # Obtiene la letra de la columna
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(cell.value)
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            ws.column_dimensions[column].width = adjusted_width
+            for cell in col:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        # Obtener los datos de SeccionAuditoria
+        queryset = SeccionAuditoria.objects.all()
+
+        # URL base del servidor donde se almacenan las evidencias
+        base_url = request.build_absolute_uri('/')[:-1]
+
+        # Agregar los datos al Excel
+        for seccion in queryset:
+            evidencia_url = base_url + seccion.evidencia.url if seccion.evidencia else 'Sin evidencia'
+            fila = [
+                seccion.codigo_referencia,
+                seccion.area_seguridad.descripcion,
+                seccion.descripcion_control,
+                seccion.estado.descripcion,
+                seccion.pregunta,
+                seccion.respuesta,
+                seccion.observaciones,
+                seccion.recomendaciones,
+            ]
+            ws.append(fila)
+
+        # Crear un borde para las celdas
+        thin_border = Border(left=Side(style='thin'), 
+                             right=Side(style='thin'), 
+                             top=Side(style='thin'), 
+                             bottom=Side(style='thin'))
+
+        # Aplicar el borde a todas las celdas
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.border = thin_border
+
+        # Crear un objeto BytesIO para almacenar el archivo Excel
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Preparar la respuesta HTTP con el archivo Excel
+        response = HttpResponse(output, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        response['Content-Disposition'] = 'attachment; filename=Informe_Auditoria_General.xlsx'
+
+        return response
+    
 class GenerarInformePDF(View):
     def get(self, request, *args, **kwargs):
         # Obtener los parámetros de filtro de la solicitud GET
@@ -100,15 +180,16 @@ class GenerarInformePDF(View):
 
             # Detalles del informe
             detalles_informe = [
-                ['Entidad Auditada:', entidad_auditada.nombre],
-                ['Dirección:', entidad_auditada.direccion],
-                ['Responsable:', entidad_auditada.responsable],
-                ['Auditor:', auditor.nombre],
-                ['DNI del Auditor:', auditor.dni],
-                ['Email del Auditor:', auditor.email],
-                ['Teléfono del Auditor:', auditor.telefono],
-                ['Fecha del Informe:', informe.fecha.strftime('%d/%m/%Y')],
-                ['Motivo de la Auditoría:', informe.motivo]
+                ['Entidad Auditada', entidad_auditada.nombre],
+                ['Dirección', entidad_auditada.direccion],
+                ['Responsable', entidad_auditada.responsable],
+                ['Auditor(es)', auditor.nombre],
+                ['DNI del Auditor', auditor.dni],
+                ['Email del Auditor', auditor.email],
+                ['Teléfono del Auditor', auditor.telefono],
+                ['Fecha del Informe', informe.fecha.strftime('%d/%m/%Y')],
+                # ['Motivo de la Auditoría', informe.motivo]
+                [Paragraph('Motivo de la Auditoría', styles['BodyText']), Paragraph(informe.motivo, styles['BodyText'])],
             ]
 
             # Crear la tabla
@@ -154,6 +235,50 @@ class GenerarInformePDF(View):
         
             return tablas_secciones
         # Función principal para generar el PDF
+        def generar_tabla_resumen(datos_secciones):
+            # Contar los estados de las secciones
+            print(datos_secciones)
+            estados = [seccion['estado'] for seccion in datos_secciones]
+            contador_estados = Counter(estados)
+
+            # Calcular el número total de controles auditados
+            numero_total_controles = len(datos_secciones)
+
+            # Obtener el número de controles cumplidos y no cumplidos
+            numero_controles_cumplidos = contador_estados.get('Cumple', 0)
+            numero_controles_no_cumplidos = contador_estados.get('No Cumple', 0)
+
+            # Calcular el porcentaje de cumplimiento
+            if numero_total_controles > 0:
+                porcentaje_cumplimiento = f"{(numero_controles_cumplidos / numero_total_controles) * 100:.2f}%"
+            else:
+                porcentaje_cumplimiento = "0%"
+
+            # Acciones correctivas recomendadas
+
+            # Datos del resumen de resultados
+            datos_resumen = [
+                ['Número Total de Controles Auditados', str(numero_total_controles)],
+                ['Número de Controles Cumplidos', str(numero_controles_cumplidos)],
+                ['Número de Controles No Cumplidos', str(numero_controles_no_cumplidos)],
+                ['Porcentaje de Cumplimiento', porcentaje_cumplimiento],
+            ]
+
+            # Crear la tabla
+            tabla_resumen = Table(datos_resumen, colWidths=[250, '*'])
+
+            # Estilo de la tabla
+            estilo_tabla = TableStyle([
+                ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('INNERGRID', (0, 0), (-1, -1), 0.25, colors.black),
+                ('BOX', (0, 0), (-1, -1), 0.25, colors.black),
+            ])
+            tabla_resumen.setStyle(estilo_tabla)
+
+            return tabla_resumen
+    
         def generar_pdf(datos_secciones):
             # Nombre del archivo de salida
             nombre_archivo = "Informe_Auditoria.pdf"
@@ -195,6 +320,11 @@ class GenerarInformePDF(View):
             
             # Espacio entre tablas
             contenido.append(Spacer(1, 24))
+            contenido.append(Paragraph("Resumen Auditoria", estilo_subtitulo))
+            tabla_resumen = generar_tabla_resumen(datos_secciones)
+            contenido.append(tabla_resumen)
+            # Espacio entre tablas
+            contenido.append(Spacer(1, 24))
 
             # Nueva página para la tabla de detalles de la auditoría en horizontal
             contenido.append(PageBreak())
@@ -231,7 +361,20 @@ class GenerarInformePDF(View):
 
                     # Incrementar el contador de tablas
                     contador_tablas += 1
-
+            
+            querysets = SeccionAuditoria.objects.all()
+            datos_secciones = []
+            for seccion in querysets:
+                datos_secciones.append({
+                    'codigo_referencia': seccion.codigo_referencia,
+                    'area_seguridad': seccion.area_seguridad.descripcion,
+                    'descripcion_control': seccion.descripcion_control,
+                    'estado': seccion.estado.descripcion,
+                    'evidencia': base_url + seccion.evidencia.url if seccion.evidencia else '',
+                    'observaciones': seccion.observaciones,
+                })
+            # contenido.append(PageBreak())
+            
             # Generar el PDF
             doc.build(contenido)
 
@@ -267,7 +410,7 @@ class GenerarCuestionarioPDF(View):
         contenido.append(titulo)
         contenido.append(Spacer(1, 9))
         fecha = informe.fecha.strftime('%d/%m/%Y')
-        descripcion = Paragraph(f'Este cuestionario ha sido preparado por <b>{informe.auditor.nombre}</b> en <b>{fecha}</b>.', styles['BodyText'])
+        descripcion = Paragraph(f'El cuestionario fue formulado por <b>{informe.auditor.nombre}</b> y auditado por su grupo académico el <b>{fecha}</b>.', styles['BodyText'])
         contenido.append(descripcion)
         contenido.append(Spacer(1, 9))
         
@@ -309,7 +452,7 @@ class GenerarCuestionarioPDF(View):
             ]))
         contenido.append(table)
         contenido.append(Spacer(1, 0.5 * inch))
-        powered_by = f"Powered by AuditoresTec - 2024 ®"
+        powered_by = f"Powered by Grupo7 - 2024 ®"
         contenido.append(Paragraph(powered_by, styles['Normal']))
 
         # Construir el PDF
@@ -323,12 +466,16 @@ class GenerarCuestionarioPDF(View):
         # Título del área de seguridad
         contenido_seccion.append(Paragraph(f"<b>{area_seguridad.descripcion}</b>", styles['Heading2']))
         contenido_seccion.append(Spacer(1, 6))
-
+        justified_style = ParagraphStyle(
+            name='Justified',
+            parent=styles['BodyText'],
+            alignment=TA_JUSTIFY
+        )
         # Iterar sobre cada pregunta en el área de seguridad
         for idx, seccion in enumerate(preguntas, start=1):
-            contenido_seccion.append(Paragraph(f"<b>{seccion.codigo_referencia}</b>. {seccion.pregunta}", styles['BodyText']))
+            contenido_seccion.append(Paragraph(f"<b>{seccion.codigo_referencia}</b>. {seccion.pregunta}", justified_style))
             contenido_seccion.append(Spacer(1, 3))
-            contenido_seccion.append(Paragraph(f"{seccion.respuesta} <b>({seccion.quien_responde.nombre})</b>", styles['BodyText']))
+            contenido_seccion.append(Paragraph(f"{seccion.respuesta} <b>({seccion.quien_responde.nombre})</b>", justified_style))
             contenido_seccion.append(Spacer(1, 9))
 
         return contenido_seccion
