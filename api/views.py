@@ -54,7 +54,7 @@ class ExportarAuditoriaExcel(View):
 
         # Agregar los datos al Excel
         for seccion in queryset:
-            evidencia_url = base_url + seccion.evidencia.url if seccion.evidencia else 'Sin evidencia'
+            evidencia_url = base_url + seccion.evidencia.url if seccion.evidencia else '- -'
             fila = [
                 seccion.codigo_referencia,
                 seccion.area_seguridad.descripcion,
@@ -141,7 +141,7 @@ class GenerarInformePDF(View):
                 if seccion['evidencia']:
                     evidencia = Paragraph(f'<a target="_blank" href="{seccion["evidencia"]}" color="blue"><b>[ANEXO {i}]</b></a>', estilo_parrafo)
                 else:
-                    evidencia = "Sin evidencia"
+                    evidencia = "- -"
                 fila = [
                     Paragraph(seccion['codigo_referencia'], estilo_justificado),
                     Paragraph(seccion['area_seguridad'], ),
@@ -214,11 +214,11 @@ class GenerarInformePDF(View):
             # Recorrer cada sección y crear una tabla vertical
             for seccion in datos_secciones:
                 tabla_seccion = Table([
-                    [Paragraph('Código', styles['BodyText']), Paragraph(seccion['codigo_referencia'], styles['BodyText'])],
+                    [Paragraph('Código', styles['BodyText']), Paragraph(f'<b>{seccion["codigo_referencia"]}</b>', styles['BodyText'])],
                     [Paragraph('Área de Seguridad', styles['BodyText']), Paragraph(seccion['area_seguridad'], styles['BodyText'])],
                     [Paragraph('Descripción del Control', styles['BodyText']), Paragraph(seccion['descripcion_control'], styles['BodyText'])],
                     [Paragraph('Estado', styles['BodyText']), Paragraph(seccion['estado'], styles['BodyText'])],
-                    [Paragraph('Evidencia', styles['BodyText']), Paragraph(f'<a target="_blank" href="{seccion["evidencia"]}" color="blue"><b>[ANEXO {pos}]</b></a>', styles['BodyText']) if seccion['evidencia'] else ''],
+                    # [Paragraph('Evidencia', styles['BodyText']), Paragraph(f'<a target="_blank" href="{seccion["evidencia"]}" color="blue"><b>[ANEXO {pos}]</b></a>', styles['BodyText']) if seccion['evidencia'] else ''],
                     [Paragraph('Observaciones', styles['BodyText']), Paragraph(seccion['observaciones'], styles['BodyText'])],
                     [Paragraph('Recomendaciones', styles['BodyText']), Paragraph(seccion['recomendaciones'], styles['BodyText'])],
                 ], colWidths=[150, '*'])
@@ -342,7 +342,7 @@ class GenerarInformePDF(View):
                     'area_seguridad': seccion.area_seguridad.descripcion,
                     'descripcion_control': seccion.descripcion_control,
                     'estado': seccion.estado.descripcion,
-                    'evidencia': base_url + seccion.evidencia.url if seccion.evidencia else '',
+                    # 'evidencia': base_url + seccion.evidencia.url if seccion.evidencia else '',
                     'observaciones': seccion.observaciones,
                     'recomendaciones': seccion.recomendaciones,
                 }
